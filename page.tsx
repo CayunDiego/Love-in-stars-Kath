@@ -44,6 +44,66 @@ class Star {
   }
 }
 
+class TextStar {
+  x: number
+  y: number
+  targetX: number
+  targetY: number
+  size: number
+  twinkleSpeed: number
+  brightness: number
+  maxBrightness: number
+  visible: boolean
+  delay: number
+
+  constructor(x: number, y: number, delay: number) {
+    this.targetX = x
+    this.targetY = y
+    this.x = x + (Math.random() - 0.5) * 50
+    this.y = y + (Math.random() - 0.5) * 50
+    this.size = Math.random() * 1.5 + 1.5
+    this.twinkleSpeed = Math.random() * 0.08 + 0.04
+    this.brightness = 0.3
+    this.maxBrightness = 0.8
+    this.visible = false
+    this.delay = delay
+  }
+
+  update() {
+    if (!this.visible) return
+
+    this.x += (this.targetX - this.x) * 0.1
+    this.y += (this.targetY - this.y) * 0.1
+
+    this.brightness += this.twinkleSpeed
+    if (this.brightness > this.maxBrightness || this.brightness < 0.2) {
+      this.twinkleSpeed = -this.twinkleSpeed
+    }
+  }
+
+  draw(ctx: CanvasRenderingContext2D) {
+    if (!this.visible) return
+
+    ctx.shadowBlur = 15
+    ctx.shadowColor = "rgba(255, 255, 255, 0.5)"
+
+    ctx.beginPath()
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2)
+    ctx.fillStyle = `rgba(255, 255, 255, ${this.brightness})`
+    ctx.fill()
+
+    ctx.shadowBlur = 8
+    ctx.shadowColor = "rgba(255, 255, 255, 0.4)"
+    ctx.fill()
+
+    ctx.shadowBlur = 3
+    ctx.shadowColor = "rgba(255, 255, 255, 0.6)"
+    ctx.fill()
+
+    ctx.shadowBlur = 0
+  }
+}
+
 class ShootingStar {
   x: number
   y: number
@@ -91,9 +151,37 @@ class ShootingStar {
   }
 }
 
+function getTextPoints(text: string, ctx: CanvasRenderingContext2D, x: number, y: number): Array<[number, number]> {
+  ctx.font = "bold 72px Arial"
+  ctx.fillStyle = "white"
+
+  const metrics = ctx.measureText(text)
+  const textX = x - metrics.width / 2
+
+  ctx.fillText(text, textX, y)
+
+  const points: Array<[number, number]> = []
+  const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height)
+  const pixels = imageData.data
+  const density = 6
+
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+
+  for (let i = 0; i < imageData.height; i += density) {
+    for (let j = 0; j < imageData.width; j += density) {
+      const alpha = pixels[(i * imageData.width + j) * 4 + 3]
+      if (alpha > 0) {
+        points.push([j, i])
+      }
+    }
+  }
+
+  return points
+}
+
 export default function StarrySky() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [message, setMessage] = useState("")
+  const textStarsRef = useRef<TextStar[]>([])
   const [showMessage, setShowMessage] = useState(false)
   const fullMessage = "Kath te amo"
 
@@ -111,11 +199,13 @@ export default function StarrySky() {
     updateSize()
     window.addEventListener("resize", updateSize)
 
-    // Aumentar significativamente la densidad de estrellas
+    const points = getTextPoints(fullMessage, ctx, canvas.width / 2, canvas.height / 2)
+
+    textStarsRef.current = points.map((point, index) => new TextStar(point[0], point[1], index * 5))
+
     const stars: Star[] = []
     const numberOfStars = Math.floor((canvas.width * canvas.height) / 1000)
 
-    // Crear una cuadrícula para distribuir las estrellas más uniformemente
     const gridSize = 50
     const cols = Math.ceil(canvas.width / gridSize)
     const rows = Math.ceil(canvas.height / gridSize)
@@ -132,23 +222,18 @@ export default function StarrySky() {
       }
     }
 
-    // Create Southern Cross constellation (Crux)
     const southernCross = [
-      // Acrux (α Crucis) - La más brillante en la base
-      new Star(canvas.width * 0.38, canvas.height * 0.45, 3, true),
-      // Gacrux (γ Crucis) - En la parte superior
-      new Star(canvas.width * 0.32, canvas.height * 0.25, 2.5, true),
-      // Becrux/Mimosa (β Crucis) - Brazo izquierdo
-      new Star(canvas.width * 0.28, canvas.height * 0.36, 2.5, true),
-      // δ Crucis - Brazo derecho
-      new Star(canvas.width * 0.42, canvas.height * 0.30, 2.5, true),
+      new Star(canvas.width * 0.25, canvas.height * 0.35, 3, true),
+      new Star(canvas.width * 0.19, canvas.height * 0.15, 2.5, true),
+      new Star(canvas.width * 0.15, canvas.height * 0.26, 2.5, true),
+      new Star(canvas.width * 0.29, canvas.height * 0.2, 2.5, true),
     ]
 
     // Create Three Marys constellation
     const threeMarys = [
-      new Star(canvas.width * 0.7, canvas.height * 0.4, 3, true),
-      new Star(canvas.width * 0.72, canvas.height * 0.42, 3, true),
-      new Star(canvas.width * 0.74, canvas.height * 0.44, 3, true),
+      new Star(canvas.width * 0.7, canvas.height * 0.25, 3, true), // Cambiado de 0.4 a 0.25
+      new Star(canvas.width * 0.72, canvas.height * 0.27, 3, true), // Cambiado de 0.42 a 0.27
+      new Star(canvas.width * 0.74, canvas.height * 0.29, 3, true), // Cambiado de 0.44 a 0.29
     ]
 
     const shootingStars: ShootingStar[] = Array(3)
@@ -156,9 +241,14 @@ export default function StarrySky() {
       .map(() => new ShootingStar(canvas.width, canvas.height))
 
     let frameCount = 0
+    const startTime = Date.now()
+
     const animate = () => {
       ctx.fillStyle = "rgba(0, 0, 15, 0.1)"
       ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      const currentTime = Date.now()
+      const elapsed = currentTime - startTime
 
       stars.forEach((star) => {
         star.update()
@@ -174,19 +264,16 @@ export default function StarrySky() {
         star.draw(ctx)
       })
 
-      // Dibujar las líneas con el mismo estilo para ambas constelaciones
       ctx.beginPath()
       ctx.strokeStyle = "rgba(255, 255, 255, 0.2)"
       ctx.lineWidth = 1
 
-      // Cruz del Sur
       ctx.moveTo(southernCross[0].x, southernCross[0].y)
       ctx.lineTo(southernCross[1].x, southernCross[1].y)
       ctx.moveTo(southernCross[2].x, southernCross[2].y)
       ctx.lineTo(southernCross[3].x, southernCross[3].y)
       ctx.stroke()
 
-      // Tres Marías
       ctx.beginPath()
       ctx.strokeStyle = "rgba(255, 255, 255, 0.2)"
       ctx.lineWidth = 1
@@ -195,6 +282,14 @@ export default function StarrySky() {
         ctx.lineTo(star.x, star.y)
       })
       ctx.stroke()
+
+      textStarsRef.current.forEach((star, index) => {
+        if (elapsed > star.delay) {
+          star.visible = true
+          star.update()
+          star.draw(ctx)
+        }
+      })
 
       frameCount++
       if (frameCount % 120 === 0) {
@@ -218,15 +313,6 @@ export default function StarrySky() {
 
     setTimeout(() => {
       setShowMessage(true)
-      let currentLength = 0
-      const interval = setInterval(() => {
-        if (currentLength <= fullMessage.length) {
-          setMessage(fullMessage.slice(0, currentLength))
-          currentLength++
-        } else {
-          clearInterval(interval)
-        }
-      }, 200)
     }, 2000)
 
     return () => {
@@ -244,11 +330,6 @@ export default function StarrySky() {
         priority
       />
       <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full opacity-80" />
-      {showMessage && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <h1 className="text-white text-4xl md:text-6xl lg:text-7xl font-bold tracking-wider opacity-40 animate-twinkle-shadow">{message}</h1>
-        </div>
-      )}
     </div>
   )
 }
